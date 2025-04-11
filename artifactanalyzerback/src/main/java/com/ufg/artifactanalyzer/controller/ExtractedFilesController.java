@@ -27,27 +27,18 @@ public class ExtractedFilesController {
         this.extractedFilesService = extractedFilesService;
     }
 
-    /**
-     * Lista todos os recursos FHIR extraídos
-     */
     @GetMapping(value = "/resources", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> getAllExtractedResources() throws IOException {
         List<Resource> resources = extractedFilesService.listAllResources();
         return ResponseEntity.ok(convertResourcesToJson(resources));
     }
 
-    /**
-     * Lista recursos FHIR filtrados por resourceType
-     */
     @GetMapping(value = "/resources/{resourceType}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> getResourcesByType(@PathVariable String resourceType) throws IOException {
         List<Resource> resources = extractedFilesService.listResourcesByType(resourceType);
         return ResponseEntity.ok(convertResourcesToJson(resources));
     }
 
-    /**
-     * Busca recurso FHIR pelo id
-     */
     @GetMapping(value = "/resources/id/{id}", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<String> getResourceById(@PathVariable String id) throws IOException {
         Resource resource = extractedFilesService.getResourceById(id);
@@ -57,18 +48,12 @@ public class ExtractedFilesController {
         return ResponseEntity.ok(fhirParser.encodeResourceToString(resource));
     }
 
-    /**
-     * Conta recursos FHIR por tipo
-     */
     @GetMapping(value = "/resources/count", produces = MediaType.APPLICATION_JSON_VALUE)
     public ResponseEntity<Map<String, Long>> countResourcesByType() throws IOException {
         Map<String, Long> counts = extractedFilesService.countResourcesByType();
         return ResponseEntity.ok(counts);
     }
 
-    /**
-     * Utilitário para converter lista de recursos para JSON FHIR
-     */
     private String convertResourcesToJson(List<Resource> resources) {
         StringBuilder responseJson = new StringBuilder("[");
         for (int i = 0; i < resources.size(); i++) {
@@ -80,4 +65,12 @@ public class ExtractedFilesController {
         responseJson.append("]");
         return responseJson.toString();
     }
+
+    @GetMapping(value = "/resources/search", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> searchResources(@RequestParam String query) throws IOException {
+        List<Resource> results = extractedFilesService.searchResources(query);
+        String responseJson = convertResourcesToJson(results);
+        return ResponseEntity.ok(responseJson);
+    }
+
 }
