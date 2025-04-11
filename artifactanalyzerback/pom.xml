@@ -51,7 +51,16 @@
 			<artifactId>commons-compress</artifactId>
 			<version>1.26.0</version>
 		</dependency>
-
+		<dependency>
+			<groupId>ca.uhn.hapi.fhir</groupId>
+			<artifactId>hapi-fhir-base</artifactId>
+			<version>8.0.0</version>
+		</dependency>
+		<dependency>
+			<groupId>ca.uhn.hapi.fhir</groupId>
+			<artifactId>hapi-fhir-structures-r4</artifactId>
+			<version>8.0.0</version>
+		</dependency>
 	</dependencies>
 
 	<build>

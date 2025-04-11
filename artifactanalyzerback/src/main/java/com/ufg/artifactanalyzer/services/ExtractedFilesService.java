@@ -1,69 +1,108 @@
 package com.ufg.artifactanalyzer.services;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
+import ca.uhn.fhir.context.FhirContext;
+import ca.uhn.fhir.parser.IParser;
+import org.hl7.fhir.r4.model.Resource;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
 import java.util.*;
 import java.util.stream.Collectors;
 
 @Service
 public class ExtractedFilesService {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private final FhirContext fhirContext = FhirContext.forR4();
+    private final IParser parser = fhirContext.newJsonParser();
     private final String extractedPath = new File("uploads/extracted/package/").getAbsolutePath();
 
-    public List<Map<String, Object>> listAllFiles() throws IOException {
-        File folder = new File(extractedPath);
-        File[] files = folder.listFiles((dir, name) -> name.endsWith(".json"));
-
-        if (files == null) return Collections.emptyList();
-
-        List<Map<String, Object>> result = new ArrayList<>();
-        for (File file : files) {
-            Map<String, Object> json = objectMapper.readValue(file, Map.class);
-            result.add(json);
-        }
-        return result;
-    }
-
-    public List<Map<String, Object>> listFilesByResourceType(String resourceType) throws IOException {
-        return listAllFiles().stream()
-                .filter(json -> resourceType.equalsIgnoreCase((String) json.get("resourceType")))
+    /**
+     * Lista todos os recursos FHIR extraídos
+     */
+    public List<Resource> listAllResources() throws IOException {
+        return readJsonFiles().stream()
+                .map(this::parseJsonToResource)
+                .filter(Objects::nonNull)
                 .collect(Collectors.toList());
     }
 
-    public Map<String, Object> getFileById(String id) throws IOException {
-        return listAllFiles().stream()
-                .filter(json -> id.equals(json.get("id")))
+    /**
+     * Lista os recursos FHIR filtrados por resourceType
+     */
+    public List<Resource> listResourcesByType(String resourceType) throws IOException {
+        return listAllResources().stream()
+                .filter(resource -> resource.getResourceType().name().equalsIgnoreCase(resourceType))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Busca um recurso FHIR pelo campo "id"
+     */
+    public Resource getResourceById(String id) throws IOException {
+        return listAllResources().stream()
+                .filter(resource -> id.equals(resource.getIdElement().getIdPart()))
                 .findFirst()
                 .orElse(null);
     }
 
-    public Map<String, Long> countFilesByResourceType() throws IOException {
-        List<Map<String, Object>> allFiles = listAllFiles();
+    /**
+     * Conta os recursos por resourceType e inclui o total geral
+     */
+    public Map<String, Long> countResourcesByType() throws IOException {
+        List<Resource> resources = listAllResources();
 
-        Map<String, Long> counts = allFiles.stream()
+        Map<String, Long> counts = resources.stream()
                 .collect(Collectors.groupingBy(
-                        json -> {
-                            String resourceType = (String) json.get("resourceType");
-                            return resourceType != null ? resourceType : "UNKNOWN";
-                        },
+                        resource -> Optional.ofNullable(resource.getResourceType().name()).orElse("UNKNOWN"),
+                        LinkedHashMap::new,
                         Collectors.counting()
                 ));
 
-        counts.put("total", (long) allFiles.size());
+        counts.put("total", (long) resources.size());
 
-        // Ordena e coloca "total" por último
+        // Ordena colocando o total por último
         Map<String, Long> orderedCounts = new LinkedHashMap<>();
-
         counts.entrySet().stream()
                 .filter(entry -> !"total".equals(entry.getKey()))
                 .forEach(entry -> orderedCounts.put(entry.getKey(), entry.getValue()));
-
         orderedCounts.put("total", counts.get("total"));
 
         return orderedCounts;
     }
+
+    /**
+     * Lê todos os arquivos .json da pasta extraída
+     */
+    private List<String> readJsonFiles() throws IOException {
+        File folder = new File(extractedPath);
+        File[] files = folder.listFiles((dir, name) -> name.endsWith(".json"));
+
+        if (files == null) {
+            return Collections.emptyList();
+        }
+
+        List<String> jsonContents = new ArrayList<>();
+        for (File file : files) {
+            String content = Files.readString(file.toPath(), StandardCharsets.UTF_8);
+            jsonContents.add(content);
+        }
+        return jsonContents;
+    }
+
+    /**
+     * Converte conteúdo JSON para Resource FHIR
+     */
+    private Resource parseJsonToResource(String jsonContent) {
+        try {
+            return (Resource) parser.parseResource(jsonContent);
+        } catch (Exception e) {
+            System.err.println("Erro ao parsear recurso FHIR: " + e.getMessage());
+            return null;
+        }
+    }
+
+
 }
