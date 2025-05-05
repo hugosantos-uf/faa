@@ -2,7 +2,7 @@ package com.ufg.artifactanalyzer.services;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.parser.IParser;
-import org.hl7.fhir.r4.model.*;
+import org.hl7.fhir.r4.model.Resource;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
@@ -18,47 +18,104 @@ public class ExtractedFilesService {
     private final FhirContext fhirContext = FhirContext.forR4();
     private final IParser parser = fhirContext.newJsonParser();
     private final String extractedPath = new File("uploads/extracted/package/").getAbsolutePath();
+    private final Map<String, List<Resource>> loadedResources = new HashMap<>();
+
+    // Carrega e cacheia os recursos agrupados por tipo
+    private void loadResources() throws IOException {
+        if (!loadedResources.isEmpty()) {
+            return;
+        }
+
+        System.out.println(">>>>> Carregando recursos da pasta: " + extractedPath);
+        List<String> jsonContents = readJsonFiles();
+
+        for (String json : jsonContents) {
+            Resource resource = parseJsonToResource(json);
+            if (resource != null) {
+                String type = resource.getResourceType().name();
+                loadedResources.computeIfAbsent(type, k -> new ArrayList<>()).add(resource);
+            }
+        }
+
+        System.out.println(">>>>> Total de tipos de recursos carregados: " + loadedResources.keySet().size());
+    }
 
     public List<Resource> listAllResources() throws IOException {
-        return readJsonFiles().stream()
-                .map(this::parseJsonToResource)
-                .filter(Objects::nonNull)
+        loadResources();
+        return loadedResources.values().stream()
+                .flatMap(List::stream)
                 .collect(Collectors.toList());
     }
 
     public List<Resource> listResourcesByType(String resourceType) throws IOException {
-        return listAllResources().stream()
-                .filter(resource -> resource.getResourceType().name().equalsIgnoreCase(resourceType))
-                .collect(Collectors.toList());
+        loadResources();
+        return loadedResources.getOrDefault(resourceType, Collections.emptyList());
     }
 
     public Resource getResourceById(String id) throws IOException {
-        return listAllResources().stream()
+        loadResources();
+        return loadedResources.values().stream()
+                .flatMap(List::stream)
                 .filter(resource -> id.equals(resource.getIdElement().getIdPart()))
                 .findFirst()
                 .orElse(null);
     }
 
     public Map<String, Long> countResourcesByType() throws IOException {
-        List<Resource> resources = listAllResources();
-
-        Map<String, Long> counts = resources.stream()
-                .collect(Collectors.groupingBy(
-                        resource -> Optional.ofNullable(resource.getResourceType().name()).orElse("UNKNOWN"),
-                        LinkedHashMap::new,
-                        Collectors.counting()
+        loadResources();
+        Map<String, Long> counts = loadedResources.entrySet().stream()
+                .collect(Collectors.toMap(
+                        Map.Entry::getKey,
+                        entry -> (long) entry.getValue().size(),
+                        (a, b) -> b,
+                        LinkedHashMap::new
                 ));
 
-        counts.put("total", (long) resources.size());
+        long total = counts.values().stream().mapToLong(Long::longValue).sum();
+        counts.put("total", total);
 
-        // Ordena colocando o total por último
-        Map<String, Long> orderedCounts = new LinkedHashMap<>();
-        counts.entrySet().stream()
-                .filter(entry -> !"total".equals(entry.getKey()))
-                .forEach(entry -> orderedCounts.put(entry.getKey(), entry.getValue()));
-        orderedCounts.put("total", counts.get("total"));
+        return counts;
+    }
 
-        return orderedCounts;
+    public List<Resource> searchResources(String query) throws IOException {
+        System.out.println(">>>>> Método searchResources() foi chamado");
+
+        loadResources();
+
+        Map<String, String> filters = parseQuery(query);
+        List<Resource> allResources = loadedResources.values().stream()
+                .flatMap(List::stream)
+                .collect(Collectors.toList());
+
+        List<Resource> filtered = allResources.stream()
+                .filter(resource -> matchesAllFilters(resource, filters))
+                .collect(Collectors.toList());
+
+        System.out.println(">>>>> Recursos encontrados: " + filtered.size());
+        return filtered;
+    }
+
+    private Map<String, String> parseQuery(String query) {
+        Map<String, String> filters = new HashMap<>();
+        String[] pairs = query.split("&");
+        for (String pair : pairs) {
+            String[] keyValue = pair.split("=");
+            if (keyValue.length == 2) {
+                filters.put(keyValue[0], keyValue[1]);
+            }
+        }
+        return filters;
+    }
+
+    private boolean matchesAllFilters(Resource resource, Map<String, String> filters) {
+        String json = fhirContext.newJsonParser().encodeResourceToString(resource);
+        for (Map.Entry<String, String> entry : filters.entrySet()) {
+            String key = "\"" + entry.getKey() + "\":";
+            if (!json.contains(key) || !json.contains(entry.getValue())) {
+                return false;
+            }
+        }
+        return true;
     }
 
     private List<String> readJsonFiles() throws IOException {
@@ -85,87 +142,4 @@ public class ExtractedFilesService {
             return null;
         }
     }
-
-    public List<Resource> searchResources(String query) throws IOException {
-        return listAllResources().stream()
-                .filter(resource -> {
-                    String name = extractName(resource);
-                    String url = extractUrl(resource);
-                    String description = extractDescription(resource);
-
-                    return containsIgnoreCase(name, query) ||
-                            containsIgnoreCase(url, query) ||
-                            containsIgnoreCase(description, query);
-                })
-                .collect(Collectors.toList());
-    }
-
-
-    private String extractName(Resource resource) {
-        switch (resource.getResourceType()) {
-            case StructureDefinition:
-                return ((StructureDefinition) resource).getName();
-            case CodeSystem:
-                return ((CodeSystem) resource).getName();
-            case ValueSet:
-                return ((ValueSet) resource).getName();
-            case ImplementationGuide:
-                return ((ImplementationGuide) resource).getName();
-            case CapabilityStatement:
-                return ((CapabilityStatement) resource).getName();
-            case OperationDefinition:
-                return ((OperationDefinition) resource).getName();
-            case SearchParameter:
-                return ((SearchParameter) resource).getName();
-            default:
-                return null;
-        }
-    }
-
-    private String extractUrl(Resource resource) {
-        switch (resource.getResourceType()) {
-            case StructureDefinition:
-                return ((StructureDefinition) resource).getUrl();
-            case CodeSystem:
-                return ((CodeSystem) resource).getUrl();
-            case ValueSet:
-                return ((ValueSet) resource).getUrl();
-            case ImplementationGuide:
-                return ((ImplementationGuide) resource).getUrl();
-            case CapabilityStatement:
-                return ((CapabilityStatement) resource).getUrl();
-            case OperationDefinition:
-                return ((OperationDefinition) resource).getUrl();
-            case SearchParameter:
-                return ((SearchParameter) resource).getUrl();
-            default:
-                return null;
-        }
-    }
-
-    private String extractDescription(Resource resource) {
-        switch (resource.getResourceType()) {
-            case StructureDefinition:
-                return ((StructureDefinition) resource).getDescription();
-            case CodeSystem:
-                return ((CodeSystem) resource).getDescription();
-            case ValueSet:
-                return ((ValueSet) resource).getDescription();
-            case ImplementationGuide:
-                return ((ImplementationGuide) resource).getDescription();
-            case CapabilityStatement:
-                return ((CapabilityStatement) resource).getDescription();
-            case OperationDefinition:
-                return ((OperationDefinition) resource).getDescription();
-            case SearchParameter:
-                return ((SearchParameter) resource).getDescription();
-            default:
-                return null;
-        }
-    }
-
-    private boolean containsIgnoreCase(String field, String query) {
-        return field != null && field.toLowerCase().contains(query.toLowerCase());
-    }
-
 }

@@ -20,11 +20,11 @@ import static org.springframework.http.HttpStatus.NOT_FOUND;
 public class ExtractedFilesController {
 
     private final ExtractedFilesService extractedFilesService;
-    private final FhirContext fhirContext = FhirContext.forR4();
-    private final IParser fhirParser = fhirContext.newJsonParser().setPrettyPrint(true);
+    private final IParser fhirParser;
 
     public ExtractedFilesController(ExtractedFilesService extractedFilesService) {
         this.extractedFilesService = extractedFilesService;
+        this.fhirParser = FhirContext.forR4().newJsonParser().setPrettyPrint(true);
     }
 
     @GetMapping(value = "/resources", produces = MediaType.APPLICATION_JSON_VALUE)
@@ -54,6 +54,12 @@ public class ExtractedFilesController {
         return ResponseEntity.ok(counts);
     }
 
+    @GetMapping(value = "/resources/search", produces = MediaType.APPLICATION_JSON_VALUE)
+    public ResponseEntity<String> searchResources(@RequestParam(required = false, defaultValue = "") String query) throws IOException {
+        List<Resource> results = extractedFilesService.searchResources(query);
+        return ResponseEntity.ok(convertResourcesToJson(results));
+    }
+
     private String convertResourcesToJson(List<Resource> resources) {
         StringBuilder responseJson = new StringBuilder("[");
         for (int i = 0; i < resources.size(); i++) {
@@ -65,12 +71,4 @@ public class ExtractedFilesController {
         responseJson.append("]");
         return responseJson.toString();
     }
-
-    @GetMapping(value = "/resources/search", produces = MediaType.APPLICATION_JSON_VALUE)
-    public ResponseEntity<String> searchResources(@RequestParam String query) throws IOException {
-        List<Resource> results = extractedFilesService.searchResources(query);
-        String responseJson = convertResourcesToJson(results);
-        return ResponseEntity.ok(responseJson);
-    }
-
 }
