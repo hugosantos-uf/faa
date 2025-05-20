@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Navbar() {
   return (
     <header className="bg-white shadow p-4">
@@ -6,12 +8,12 @@ export default function Navbar() {
           FHIR Artifact Analyzer
         </h1>
         <nav className="space-x-4">
-          <a href="#" className="text-sm hover:underline text-gray-600">
+          <Link href="/home" className="text-sm hover:underline text-gray-600">
             Início
-          </a>
-          <a href="#" className="text-sm hover:underline text-gray-600">
+          </Link>
+          <Link href="/about" className="text-sm hover:underline text-gray-600">
             Sobre
-          </a>
+          </Link>
         </nav>
       </div>
     </header>
