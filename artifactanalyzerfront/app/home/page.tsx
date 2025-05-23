@@ -318,7 +318,7 @@ export default function HomePage() {
             </p>
           </div>
         ) : (
-          <div className="text-center p-10 bg-white rounded-lg shadow">
+          <div className="text-center p-10">
             <p className="text-lg font-semibold text-gray-700">
               Nenhum pacote carregado.
             </p>
