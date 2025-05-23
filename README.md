@@ -130,4 +130,5 @@ O frontend é a interface web onde o usuário interage com a aplicação.
 2.  Arraste e solte um arquivo de pacote FHIR no formato `.tgz` na área indicada ou clique para selecioná-lo.
 3.  Após o upload, os recursos serão extraídos pelo backend e exibidos na tela, onde você poderá filtrar, buscar e analisar os artefatos.
 
+----- Sugestão de upload: Arquivo package.tgz da raiz do projeto
 ---
