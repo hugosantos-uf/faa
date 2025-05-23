@@ -308,7 +308,7 @@ export default function HomePage() {
             </div>
           )
         ) : statusMessage && statusMessage.type === "error" ? (
-          <div className="text-center p-10 bg-red-50 rounded-lg shadow">
+          <div className="text-center p-10 ">
             <ServerCrash className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <p className="text-lg font-semibold text-red-700">
               Ocorreu um erro ao carregar os dados.
