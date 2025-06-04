@@ -8,6 +8,10 @@ import {
   Loader,
   ServerCrash,
   FileJson,
+  Download,
+  CheckCircle,
+  XCircle,
+  FileCog,
 } from "lucide-react";
 
 interface FhirResource {
@@ -37,6 +41,14 @@ export default function HomePage() {
 
   const [selectedType, setSelectedType] = useState<string>("all");
   const [searchTerm, setSearchTerm] = useState<string>("");
+
+  const [isValidationModalOpen, setIsValidationModalOpen] =
+    useState<boolean>(false);
+  const [validationResults, setValidationResults] = useState<Record<
+    string,
+    string
+  > | null>(null);
+  const [isValidating, setIsValidating] = useState<boolean>(false);
 
   const fetchFhirData = useCallback(async () => {
     setIsLoadingData(true);
@@ -132,6 +144,54 @@ export default function HomePage() {
     [fetchFhirData]
   );
 
+  const handleValidateUrls = async () => {
+    if (allResources.length === 0) {
+      setStatusMessage({
+        type: "error",
+        text: "Carregue um pacote antes de validar as URLs.",
+      });
+      return;
+    }
+    setIsValidating(true);
+    setValidationResults(null);
+    try {
+      const response = await fetch(
+        `${API_BASE_URL}/fhir/resources/validate-urls`
+      );
+      if (!response.ok)
+        throw new Error(`Falha na validação: ${response.statusText}`);
+      const results = await response.json();
+      setValidationResults(results);
+      setIsValidationModalOpen(true);
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "Erro desconhecido";
+      setStatusMessage({
+        type: "error",
+        text: `Erro ao validar URLs: ${errorMessage}`,
+      });
+    } finally {
+      setIsValidating(false);
+    }
+  };
+
+  const downloadJson = () => {
+    if (allResources.length === 0) {
+      setStatusMessage({
+        type: "error",
+        text: "Não há recursos para exportar.",
+      });
+      return;
+    }
+    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
+      JSON.stringify(allResources, null, 2)
+    )}`;
+    const link = document.createElement("a");
+    link.href = jsonString;
+    link.download = "fhir_resources.json";
+    link.click();
+  };
+
   const filteredResources = useMemo(() => {
     return allResources.filter((resource) => {
       const typeMatch =
@@ -202,7 +262,6 @@ export default function HomePage() {
       {resourceCounts && (
         <div className="mt-8 p-4 bg-white border rounded-lg shadow">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            {/* Contagem */}
             <div className="flex-shrink-0">
               <h3 className="text-xl font-bold text-gray-800">
                 Total de Recursos:{" "}
@@ -242,6 +301,35 @@ export default function HomePage() {
               />
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
             </div>
+          </div>
+
+          <div className="mt-4 pt-4 border-t flex items-center gap-3 flex-wrap">
+            <h4 className="font-semibold">Ações:</h4>
+            <button
+              onClick={downloadJson}
+              className="px-4 py-2 bg-green-600 text-white rounded-md hover:bg-green-700 transition-colors text-sm inline-flex items-center gap-2"
+            >
+              <Download size={16} /> Exportar para JSON
+            </button>
+            <a
+              href={`${API_BASE_URL}/fhir/resources/export/csv`}
+              download
+              className="px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors text-sm inline-flex items-center gap-2"
+            >
+              <Download size={16} /> Exportar para CSV
+            </a>
+            <button
+              onClick={handleValidateUrls}
+              disabled={isValidating}
+              className="px-4 py-2 bg-yellow-500 text-white rounded-md hover:bg-yellow-600 transition-colors text-sm inline-flex items-center gap-2 disabled:bg-gray-400"
+            >
+              {isValidating ? (
+                <Loader size={16} className="animate-spin" />
+              ) : (
+                <FileCog size={16} />
+              )}
+              {isValidating ? "Validando..." : "Validar URLs"}
+            </button>
           </div>
         </div>
       )}
@@ -308,7 +396,7 @@ export default function HomePage() {
             </div>
           )
         ) : statusMessage && statusMessage.type === "error" ? (
-          <div className="text-center p-10 ">
+          <div className="text-center p-10 bg-red-50 rounded-lg shadow">
             <ServerCrash className="w-12 h-12 text-red-500 mx-auto mb-4" />
             <p className="text-lg font-semibold text-red-700">
               Ocorreu um erro ao carregar os dados.
@@ -318,7 +406,7 @@ export default function HomePage() {
             </p>
           </div>
         ) : (
-          <div className="text-center p-10">
+          <div className="text-center p-10 bg-white rounded-lg shadow">
             <p className="text-lg font-semibold text-gray-700">
               Nenhum pacote carregado.
             </p>
@@ -329,6 +417,65 @@ export default function HomePage() {
           </div>
         )}
       </div>
+
+      {isValidationModalOpen && validationResults && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-lg shadow-2xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <header className="p-4 border-b flex justify-between items-center">
+              <h3 className="text-xl font-bold">
+                Resultados da Validação de URL
+              </h3>
+              <button
+                onClick={() => setIsValidationModalOpen(false)}
+                className="text-gray-500 hover:text-gray-800"
+              >
+                <XCircle size={24} />
+              </button>
+            </header>
+            <main className="p-6 overflow-y-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr>
+                    <th className="border-b p-2 bg-gray-100 font-semibold">
+                      Recurso
+                    </th>
+                    <th className="border-b p-2 bg-gray-100 font-semibold">
+                      Status
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(validationResults).map(([key, value]) => (
+                    <tr key={key} className="hover:bg-gray-50">
+                      <td className="border-b p-2 font-mono text-sm">{key}</td>
+                      <td
+                        className={`border-b p-2 text-sm font-semibold inline-flex items-center gap-2 ${
+                          value === "Válida" ? "text-green-600" : "text-red-600"
+                        }`}
+                      >
+                        {value === "Válida" ? (
+                          <CheckCircle size={16} />
+                        ) : (
+                          <XCircle size={16} />
+                        )}
+                        {value}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </main>
+            <footer className="p-4 border-t text-right bg-gray-50">
+              <button
+                onClick={() => setIsValidationModalOpen(false)}
+                className="px-6 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+              >
+                Fechar
+              </button>
+            </footer>
+          </div>
+        </div>
+      )}
     </main>
   );
 }

@@ -2,11 +2,19 @@ package com.ufg.artifactanalyzer.services;
 
 import ca.uhn.fhir.context.FhirContext;
 import ca.uhn.fhir.parser.IParser;
+import org.apache.commons.csv.CSVFormat;
+import org.apache.commons.csv.CSVPrinter;
+import org.hl7.fhir.instance.model.api.IBase;
+import org.hl7.fhir.r4.model.Base;
+import org.hl7.fhir.r4.model.Property;
 import org.hl7.fhir.r4.model.Resource;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.StringWriter;
+import java.net.URI;
+import java.net.URISyntaxException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.*;
@@ -79,20 +87,82 @@ public class ExtractedFilesService {
 
     public List<Resource> searchResources(String query) throws IOException {
         System.out.println(">>>>> Método searchResources() foi chamado");
-
         loadResources();
-
         Map<String, String> filters = parseQuery(query);
         List<Resource> allResources = loadedResources.values().stream()
                 .flatMap(List::stream)
                 .collect(Collectors.toList());
-
         List<Resource> filtered = allResources.stream()
                 .filter(resource -> matchesAllFilters(resource, filters))
                 .collect(Collectors.toList());
-
         System.out.println(">>>>> Recursos encontrados: " + filtered.size());
         return filtered;
+    }
+
+    public String exportResourcesToCsv() throws IOException {
+        loadResources();
+        List<Resource> resources = listAllResources();
+        StringWriter stringWriter = new StringWriter();
+        String[] headers = {"resourceType", "id", "url", "name", "version"};
+
+        try (CSVPrinter printer = new CSVPrinter(stringWriter, CSVFormat.DEFAULT.withHeader(headers))) {
+            for (Resource resource : resources) {
+                String name = getPropertyValue(resource, "name");
+                String url = getPropertyValue(resource, "url");
+                String version = getPropertyValue(resource, "version");
+
+                printer.printRecord(
+                        resource.getResourceType().name(),
+                        resource.getIdElement().getIdPart(),
+                        url, name, version
+                );
+            }
+        }
+        return stringWriter.toString();
+    }
+
+    public Map<String, String> validateCanonicalUrls() throws IOException {
+        loadResources();
+        Map<String, String> validationResults = new LinkedHashMap<>();
+
+        for (Resource resource : listAllResources()) {
+            String resourceKey = resource.getResourceType().name() + "/" + resource.getIdElement().getIdPart();
+            try {
+                Property urlProp = resource.getNamedProperty("url");
+                if (urlProp != null && urlProp.hasValues()) {
+                    String url = urlProp.getValues().get(0).primitiveValue();
+                    if (url == null || url.trim().isEmpty()) {
+                        validationResults.put(resourceKey, "URL vazia");
+                    } else {
+                        new URI(url); // Tenta criar uma URI para validar a sintaxe
+                        validationResults.put(resourceKey, "Válida");
+                    }
+                }
+                // Se não tiver a propriedade 'url', simplesmente não adiciona ao mapa de resultados
+            } catch (URISyntaxException e) {
+                validationResults.put(resourceKey, "Inválida (Sintaxe incorreta)");
+            } catch (Exception e) {
+                // Captura outras exceções que possam ocorrer ao acessar a propriedade
+                validationResults.put(resourceKey, "Erro ao ler URL");
+            }
+        }
+        return validationResults;
+    }
+
+
+    // --- MÉTODOS PRIVADOS AUXILIARES ---
+
+    private String getPropertyValue(Resource resource, String propertyName) {
+        try {
+            Property prop = resource.getNamedProperty(propertyName);
+            if (prop != null && prop.hasValues()) {
+                Base value = prop.getValues().get(0);
+                return value.primitiveValue().replace("\"", ""); // Retorna o valor primitivo e remove aspas
+            }
+        } catch (Exception e) {
+            // Ignora exceções se a propriedade não existir ou não puder ser lida
+        }
+        return "N/A";
     }
 
     private Map<String, String> parseQuery(String query) {
@@ -123,6 +193,7 @@ public class ExtractedFilesService {
         File[] files = folder.listFiles((dir, name) -> name.endsWith(".json"));
 
         if (files == null) {
+            System.err.println("Diretório não encontrado ou vazio: " + extractedPath);
             return Collections.emptyList();
         }
 

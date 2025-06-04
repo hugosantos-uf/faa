@@ -61,6 +61,11 @@
 			<artifactId>hapi-fhir-structures-r4</artifactId>
 			<version>8.0.0</version>
 		</dependency>
+		<dependency>
+			<groupId>org.apache.commons</groupId>
+			<artifactId>commons-csv</artifactId>
+			<version>1.10.0</version>
+		</dependency>
 	</dependencies>
 
 	<build>
